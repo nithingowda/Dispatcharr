@@ -24,6 +24,8 @@ from apps.m3u.utils import calculate_tuner_count
 from apps.proxy.utils import get_user_active_connections
 import regex
 from core.utils import log_system_event, build_absolute_uri_with_port
+from apps.vod.models import Movie, Episode
+from django.urls import reverse
 import hashlib
 
 logger = logging.getLogger(__name__)
@@ -315,6 +317,61 @@ def generate_m3u(request, profile_name=None, user=None):
             stream_url = f"{_stream_url_prefix}{channel.uuid}{proxy_qs_suffix}"
 
         m3u_content += extinf_line + stream_url + "\n"
+        
+          # ======================================
+    # MOVIES
+    # ======================================
+    try:
+        for movie in Movie.objects.all().order_by("name"):
+
+            movie_name = getattr(movie, "name", f"Movie {movie.id}")
+
+            m3u_content += (
+                f'#EXTINF:-1 tvg-id="movie-{movie.id}" '
+                f'group-title="Movies",{movie_name}\n'
+            )
+
+            movie_url = (
+                f"{_base_url}/vod/movie/{movie.id}"
+            )
+
+            m3u_content += movie_url + "\n"
+
+    except Exception as e:
+        logger.error(f"Error exporting movies: {e}")
+
+
+    # ======================================
+    # SERIES EPISODES
+    # ======================================
+    try:
+        for episode in Episode.objects.select_related("series").all():
+
+            episode_name = getattr(episode, "name", f"Episode {episode.id}")
+
+            try:
+                title = (
+                    f"{episode.series.name} "
+                    f"S{episode.season_number:02d}"
+                    f"E{episode.episode_number:02d}"
+                    f" - {episode_name}"
+                )
+            except Exception:
+                title = episode_name
+
+            m3u_content += (
+                f'#EXTINF:-1 tvg-id="episode-{episode.id}" '
+                f'group-title="Series",{title}\n'
+            )
+
+            episode_url = (
+                f"{_base_url}/vod/episode/{episode.id}"
+            )
+
+            m3u_content += episode_url + "\n"
+
+    except Exception as e:
+        logger.error(f"Error exporting episodes: {e}")
 
     # Cache the generated content for 2 seconds to handle double-GET requests
     cache.set(content_cache_key, m3u_content, 2)
